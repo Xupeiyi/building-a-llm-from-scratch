@@ -1,0 +1,19 @@
+# Python
+# Byte-code files
+*.pyc
+__pycache__/
+# Environment
+venv/
+.venv/
+env/
+.env/
+# Editor files
+.vscode/
+.idea/
+# Sensitive files
+.env
+secrets.txt
+# Build artifacts
+dist/
+build/
+*.egg-info/
