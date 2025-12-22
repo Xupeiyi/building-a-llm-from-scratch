@@ -17,3 +17,5 @@ secrets.txt
 dist/
 build/
 *.egg-info/
+
+gpt2/
