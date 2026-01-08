@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 
@@ -65,3 +67,139 @@ class MultiHeadAttention(nn.Module):
         
         context_vectors = self.out_projection(context_vectors)
         return context_vectors
+
+
+class LayerNorm(nn.Module):
+
+    def __init__(self, embedding_dim):
+        super().__init__()
+        self.eps = 1e-5
+        self.scale = nn.Parameter(torch.ones(embedding_dim))
+        self.shift = nn.Parameter(torch.zeros(embedding_dim))
+    
+    def forward(self, x):
+        mean = x.mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, keepdim=True, unbiased=False)
+        normalized_x = (x - mean) / torch.sqrt(var + self.eps)
+        return self.scale * normalized_x + self.shift
+    
+
+class GELU(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x):
+        return 0.5 * x * (1 + torch.tanh(0.79788456 * (x + 0.044715 * torch.pow(x, 3))))
+    
+
+class FeedForward(nn.Module):
+
+    def __init__(self, embedding_dim):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Linear(embedding_dim, 4 * embedding_dim),
+            GELU(),
+            nn.Linear(4 * embedding_dim, embedding_dim)
+        )
+    
+    def forward(self, x):
+        return self.layers(x)
+    
+
+class TransformerBlock(nn.Module):
+
+    def __init__(
+        self, 
+        n_heads, 
+        embedding_dim, 
+        context_length,
+        dropout_rate,
+        qkv_bias,
+    ):
+        super().__init__()
+        self.norm1 = LayerNorm(embedding_dim)
+        self.attention = MultiHeadAttention(
+            n_heads=n_heads,
+            embedding_dim=embedding_dim,
+            context_dim=embedding_dim,
+            context_length=context_length,
+            dropout_rate=dropout_rate,
+            qkv_bias=qkv_bias
+        )
+        self.norm2 = LayerNorm(embedding_dim)
+        self.feed_forward = FeedForward(embedding_dim)
+        self.drop_shortcut = nn.Dropout(dropout_rate)
+    
+    def forward(self, x):
+        shortcut = x
+        x = self.norm1(x)
+        x = self.attention(x)
+        x = self.drop_shortcut(x)
+        x = x + shortcut
+
+        shortcut = x
+        x = self.norm2(x)
+        x = self.feed_forward(x)
+        x = self.drop_shortcut(x)
+        x = x + shortcut
+        return x
+    
+
+class GPTModel(nn.Module):
+
+    def __init__(
+        self, 
+        vocabulary_size, 
+        embedding_dim, 
+        context_length, 
+        n_heads, 
+        qkv_bias,
+        n_transformers,
+        dropout_rate
+    ):
+        super().__init__()
+        self.token_embedding_layer = nn.Embedding(vocabulary_size, embedding_dim)
+        self.position_embedding_layer = nn.Embedding(context_length, embedding_dim)
+        self.embedding_dropout_layer = nn.Dropout(dropout_rate)
+        self.transformer_blocks = nn.Sequential(
+            *[
+                TransformerBlock(
+                    n_heads=n_heads,
+                    embedding_dim=embedding_dim,
+                    context_length=context_length,
+                    dropout_rate=dropout_rate,
+                    qkv_bias=qkv_bias
+                ) 
+                for _ in range(n_transformers)
+            ]
+        )
+        self.final_norm = LayerNorm(embedding_dim)
+        self.out_head = nn.Linear(embedding_dim, vocabulary_size, bias=False)
+
+    def forward(self, token_ids):
+        n_batches, context_length = token_ids.shape
+
+        token_embeddings = self.token_embedding_layer(token_ids)
+        position_embeddings = self.position_embedding_layer(
+            torch.arange(context_length, device=token_ids.device)
+        )
+        embeddings = token_embeddings + position_embeddings
+        embeddings = self.embedding_dropout_layer(embeddings)
+
+        context_vectors = self.transformer_blocks(embeddings)
+        context_vectors = self.final_norm(context_vectors)
+
+        logits = self.out_head(context_vectors)
+        return logits
+
+
+@dataclass
+class GPTConfig:
+    vocabulary_size: int
+    context_length: int
+    embedding_dim: int
+    n_heads: int
+    n_transformers: int
+    dropout_rate: float
+    qkv_bias: bool
