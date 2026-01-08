@@ -194,6 +194,22 @@ class GPTModel(nn.Module):
         return logits
 
 
+def generate_text_simple(model, token_ids, n_new_tokens: int, context_size: int):
+    # token_ids is a (n_batches, n_tokens) array of token ids in the current context
+
+    for _ in range(n_new_tokens):
+        token_ids_in_context = token_ids[:, -context_size:]
+        with torch.no_grad():
+            logits = model(token_ids_in_context)
+        
+        logits = logits[:, -1, :]
+        probabilities = torch.softmax(logits, dim=-1)
+        next_token_ids = torch.argmax(probabilities, dim=-1, keepdim=True)
+        token_ids = torch.cat((token_ids, next_token_ids), dim=1)
+    
+    return token_ids
+
+
 @dataclass
 class GPTConfig:
     vocabulary_size: int
