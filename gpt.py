@@ -10,7 +10,7 @@ class MultiHeadAttention(nn.Module):
 
     def __init__(
         self, 
-        n_heads, 
+        num_heads, 
         embedding_dim, 
         context_dim, 
         context_length, 
@@ -19,13 +19,13 @@ class MultiHeadAttention(nn.Module):
     ):
         super().__init__()
         assert (
-            context_dim % n_heads == 0
+            context_dim % num_heads == 0
         ), "context dimension must be divisible by number of heads"
 
 
         self.context_dim = context_dim
-        self.n_heads = n_heads
-        self.head_dim = context_dim // n_heads
+        self.num_heads = num_heads
+        self.head_dim = context_dim // num_heads
 
         self.W_query = nn.Linear(embedding_dim, context_dim, bias=qkv_bias)
         self.W_key = nn.Linear(embedding_dim, context_dim, bias=qkv_bias)
@@ -41,18 +41,18 @@ class MultiHeadAttention(nn.Module):
         self.out_projection = nn.Linear(context_dim, context_dim)
     
     def forward(self, embeddings):
-        n_batches, context_length, embedding_dim = embeddings.shape
+        num_batches, context_length, embedding_dim = embeddings.shape
 
         keys = self.W_key(embeddings)
         queries = self.W_query(embeddings)
         values = self.W_value(embeddings)
 
-        keys = keys.view(n_batches, context_length, self.n_heads, self.head_dim)
-        queries = queries.view(n_batches, context_length, self.n_heads, self.head_dim)
-        values = values.view(n_batches, context_length, self.n_heads, self.head_dim)
+        keys = keys.view(num_batches, context_length, self.num_heads, self.head_dim)
+        queries = queries.view(num_batches, context_length, self.num_heads, self.head_dim)
+        values = values.view(num_batches, context_length, self.num_heads, self.head_dim)
 
-        # transpose to (n_batches, n_heads, n_tokens, head_dim) 
-        keys = keys.transpose(1, 2)   
+        # transpose to (num_batches, num_heads, num_tokens, head_dim)
+        keys = keys.transpose(1, 2)
         queries = queries.transpose(1, 2)
         values = values.transpose(1, 2)
 
@@ -65,8 +65,8 @@ class MultiHeadAttention(nn.Module):
 
         context_vectors = attention_weights @ values
         context_vectors = context_vectors.transpose(1, 2).contiguous()
-        context_vectors = context_vectors.view(n_batches, context_length, self.context_dim)
-        
+        context_vectors = context_vectors.view(num_batches, context_length, self.context_dim)
+
         context_vectors = self.out_projection(context_vectors)
         return context_vectors
 
@@ -113,7 +113,7 @@ class TransformerBlock(nn.Module):
 
     def __init__(
         self, 
-        n_heads, 
+        num_heads, 
         embedding_dim, 
         context_length,
         dropout_rate,
@@ -122,7 +122,7 @@ class TransformerBlock(nn.Module):
         super().__init__()
         self.norm1 = LayerNorm(embedding_dim)
         self.attention = MultiHeadAttention(
-            n_heads=n_heads,
+            num_heads=num_heads,
             embedding_dim=embedding_dim,
             context_dim=embedding_dim,
             context_length=context_length,
@@ -155,9 +155,9 @@ class GPTModel(nn.Module):
         vocabulary_size, 
         embedding_dim, 
         context_length, 
-        n_heads, 
+        num_heads,
         qkv_bias,
-        n_transformers,
+        num_transformers,
         dropout_rate
     ):
         super().__init__()
@@ -167,20 +167,20 @@ class GPTModel(nn.Module):
         self.transformer_blocks = nn.Sequential(
             *[
                 TransformerBlock(
-                    n_heads=n_heads,
+                    num_heads=num_heads,
                     embedding_dim=embedding_dim,
                     context_length=context_length,
                     dropout_rate=dropout_rate,
                     qkv_bias=qkv_bias
                 ) 
-                for _ in range(n_transformers)
+                for _ in range(num_transformers)
             ]
         )
         self.final_norm = LayerNorm(embedding_dim)
         self.out_head = nn.Linear(embedding_dim, vocabulary_size, bias=False)
 
     def forward(self, token_ids):
-        n_batches, context_length = token_ids.shape
+        num_batches, context_length = token_ids.shape
 
         token_embeddings = self.token_embedding_layer(token_ids)
         position_embeddings = self.position_embedding_layer(
@@ -196,10 +196,10 @@ class GPTModel(nn.Module):
         return logits
 
 
-def generate_text_simple(model, token_ids, n_new_tokens: int, context_size: int):
-    # token_ids is a (n_batches, n_tokens) array of token ids in the current context
+def generate_text_simple(model, token_ids, num_new_tokens: int, context_size: int):
+    # token_ids is a (num_batches, num_tokens) array of token ids in the current context
 
-    for _ in range(n_new_tokens):
+    for _ in range(num_new_tokens):
         token_ids_in_context = token_ids[:, -context_size:]
         with torch.no_grad():
             logits = model(token_ids_in_context)
@@ -217,8 +217,8 @@ class GPTConfig:
     vocabulary_size: int
     context_length: int
     embedding_dim: int
-    n_heads: int
-    n_transformers: int
+    num_heads: int
+    num_transformers: int
     dropout_rate: float
     qkv_bias: bool
 
