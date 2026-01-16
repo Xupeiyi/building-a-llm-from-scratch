@@ -1,9 +1,6 @@
 from dataclasses import dataclass
-
-import tiktoken
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
 
 
 class MultiHeadAttention(nn.Module):
@@ -196,6 +193,17 @@ class GPTModel(nn.Module):
         return logits
 
 
+@dataclass
+class GPTConfig:
+    vocabulary_size: int
+    context_length: int
+    embedding_dim: int
+    num_heads: int
+    num_transformers: int
+    dropout_rate: float
+    qkv_bias: bool
+
+
 def generate_text_simple(model, token_ids, num_new_tokens: int, context_size: int):
     # token_ids is a (num_batches, num_tokens) array of token ids in the current context
 
@@ -210,55 +218,3 @@ def generate_text_simple(model, token_ids, num_new_tokens: int, context_size: in
         token_ids = torch.cat((token_ids, next_token_ids), dim=1)
     
     return token_ids
-
-
-@dataclass
-class GPTConfig:
-    vocabulary_size: int
-    context_length: int
-    embedding_dim: int
-    num_heads: int
-    num_transformers: int
-    dropout_rate: float
-    qkv_bias: bool
-
-
-class GPTDatasetV1(Dataset):
-
-    def __init__(
-        self, text: str, tokenizer, window_length: int, stride: int
-    ):
-        token_ids = tokenizer.encode(text)
-        
-        self.input_chunks = []
-        self.target_chunks = []
-        for start in range(0, len(token_ids) - window_length, stride):
-            end = start + window_length
-            
-            input_chunk = token_ids[start:end]
-            target_chunk = token_ids[start + 1:end + 1]
-            
-            self.input_chunks.append(torch.tensor(input_chunk))
-            self.target_chunks.append(torch.tensor(target_chunk))
-
-    def __len__(self):
-        return len(self.input_chunks)
-
-    def __getitem__(self, idx):
-        return self.input_chunks[idx], self.target_chunks[idx]
-
-
-def create_dataloader_v1(
-    text: str, window_length=256, stride=128, 
-    batch_size=4, shuffle=True, drop_last=True, num_workers=0    
-):
-    tokenizer = tiktoken.get_encoding("gpt2")
-    dataset = GPTDatasetV1(text, tokenizer, window_length, stride)
-    dataloader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        drop_last=drop_last,
-        num_workers=num_workers
-    )
-    return dataloader
